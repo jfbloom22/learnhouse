@@ -1,6 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
-from src.db.usergroups import UserGroupCreate, UserGroupRead, UserGroupUpdate
+from src.db.usergroups import (
+    UserGroupContactsPage,
+    UserGroupCreate,
+    UserGroupRead,
+    UserGroupResolve,
+    UserGroupUpdate,
+)
 from src.db.users import PublicUser, UserReadPublic
 from src.services.users.usergroups import (
     add_resources_to_usergroup,
@@ -8,7 +14,9 @@ from src.services.users.usergroups import (
     create_usergroup,
     delete_usergroup_by_id,
     get_resources_by_usergroup,
+    get_usergroup_contacts,
     get_usergroups_by_resource,
+    resolve_usergroup_for_contacts,
     get_users_linked_to_usergroup,
     read_usergroup_by_id,
     read_usergroups_by_org_id,
@@ -47,6 +55,34 @@ async def api_create_usergroup(
     Create User
     """
     return await create_usergroup(request, db_session, current_user, usergroup_object)
+
+
+@router.get(
+    "/resolve",
+    response_model=UserGroupResolve,
+    tags=["usergroups"],
+    summary="Resolve one usergroup name for the contacts token",
+    description=(
+        "Exact name match inside the token's organization. "
+        "Requires usergroups.action_read_contacts. "
+        "Zero matches is 404. More than one match is 409."
+    ),
+    responses={
+        200: {"description": "The single matching group.", "model": UserGroupResolve},
+        400: {"description": "Name is blank"},
+        403: {"description": "Token lacks action_read_contacts"},
+        404: {"description": "No group with that name in the token org"},
+        409: {"description": "More than one group with that name"},
+    },
+)
+async def api_resolve_usergroup_for_contacts(
+    *,
+    request: Request,
+    db_session: AsyncSession = Depends(get_db_session),
+    current_user: PublicUser = Depends(get_current_user),
+    name: str = Query(min_length=1),
+) -> UserGroupResolve:
+    return await resolve_usergroup_for_contacts(request, db_session, current_user, name)
 
 
 @router.get(
@@ -100,6 +136,42 @@ async def api_get_users_linked_to_usergroup(
     """
     return await get_users_linked_to_usergroup(
         request, db_session, current_user, usergroup_id
+    )
+
+
+@router.get(
+    "/{usergroup_id}/contacts",
+    response_model=UserGroupContactsPage,
+    tags=["usergroups"],
+    summary="List mailing contacts for a usergroup",
+    description=(
+        "Page user_uuid, email, and first_name for one usergroup. "
+        "Requires an API token with usergroups.action_read_contacts in that org. "
+        "usergroups.action_read does not grant this route."
+    ),
+    responses={
+        200: {"description": "One page of contacts.", "model": UserGroupContactsPage},
+        401: {"description": "Authentication required"},
+        403: {"description": "Token lacks action_read_contacts or is outside the org"},
+        404: {"description": "Usergroup not found"},
+    },
+)
+async def api_get_usergroup_contacts(
+    *,
+    request: Request,
+    db_session: AsyncSession = Depends(get_db_session),
+    current_user: PublicUser = Depends(get_current_user),
+    usergroup_id: int,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=100, ge=1, le=100),
+) -> UserGroupContactsPage:
+    return await get_usergroup_contacts(
+        request,
+        db_session,
+        current_user,
+        usergroup_id,
+        page=page,
+        limit=limit,
     )
 
 

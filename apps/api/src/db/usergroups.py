@@ -31,3 +31,25 @@ class UserGroupRead(UserGroupBase):
     creation_date: str
     update_date: str
     pass
+
+
+class UserGroupContact(SQLModel):
+    """Mailing projection for one group member. No other user fields."""
+
+    user_uuid: str
+    email: str
+    first_name: str
+
+
+class UserGroupContactsPage(SQLModel):
+    items: list[UserGroupContact]
+    total: int
+    page: int
+    limit: int
+
+
+class UserGroupResolve(SQLModel):
+    """One group id for a contacts token. No member fields."""
+
+    id: int
+    name: str

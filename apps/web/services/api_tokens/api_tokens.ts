@@ -59,6 +59,7 @@ export interface APITokenRights {
     action_read: boolean
     action_update: boolean
     action_delete: boolean
+    action_read_contacts: boolean
   }
   payments: {
     action_create: boolean
@@ -171,6 +172,7 @@ export const getDefaultRights = (): APITokenRights => ({
     action_read: false,
     action_update: false,
     action_delete: false,
+    action_read_contacts: false,
   },
   payments: {
     action_create: false,
@@ -247,6 +249,7 @@ export const getFullRights = (): APITokenRights => ({
     action_read: true,
     action_update: true,
     action_delete: true,
+    action_read_contacts: true,
   },
   payments: {
     action_create: true,
@@ -323,6 +326,7 @@ export const getReadOnlyRights = (): APITokenRights => ({
     action_read: true,
     action_update: false,
     action_delete: false,
+    action_read_contacts: false,
   },
   payments: {
     action_create: false,

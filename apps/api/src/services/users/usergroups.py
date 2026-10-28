@@ -3,6 +3,7 @@ import logging
 from typing import Literal
 from uuid import uuid4
 from fastapi import HTTPException, Request
+from sqlalchemy import func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.security.features_utils.usage import (
@@ -21,8 +22,17 @@ from src.db.usergroup_resources import UserGroupResource
 from src.db.usergroup_user import UserGroupUser
 from src.db.user_organizations import UserOrganization
 from src.db.organizations import Organization
-from src.db.usergroups import UserGroup, UserGroupCreate, UserGroupRead, UserGroupUpdate
+from src.db.usergroups import (
+    UserGroup,
+    UserGroupContact,
+    UserGroupContactsPage,
+    UserGroupCreate,
+    UserGroupRead,
+    UserGroupResolve,
+    UserGroupUpdate,
+)
 from src.db.users import AnonymousUser, APITokenUser, InternalUser, PublicUser, User, UserReadPublic
+from src.security.api_token_utils import require_token_right
 from src.services.webhooks.dispatch import dispatch_webhooks
 from src.services.security.rate_limiting import enforce_batch_size_limit
 
@@ -272,6 +282,117 @@ async def get_users_linked_to_usergroup(
     # SECURITY: learners hold usergroups read by default, so member lists use
     # the public projection (no email). The router's response_model matches.
     return [UserReadPublic.model_validate(user) for user in users]
+
+
+CONTACTS_PAGE_LIMIT = 100
+
+
+async def get_usergroup_contacts(
+    request: Request,
+    db_session: AsyncSession,
+    current_user: PublicUser | AnonymousUser | APITokenUser,
+    usergroup_id: int,
+    page: int = 1,
+    limit: int = CONTACTS_PAGE_LIMIT,
+) -> UserGroupContactsPage:
+    """Page `user_uuid`, `email`, and `first_name` for one group.
+
+    Only an API token with `usergroups.action_read_contacts` in the group's
+    org may call this. `action_read` stays on the public member list.
+    """
+    del request  # Auth is the contacts right, not the generic read check.
+    limit = min(max(limit, 1), CONTACTS_PAGE_LIMIT)
+    page = max(page, 1)
+
+    usergroup = (
+        await db_session.execute(select(UserGroup).where(UserGroup.id == usergroup_id))
+    ).scalars().first()
+    if not usergroup:
+        raise HTTPException(status_code=404, detail="UserGroup not found")
+
+    _require_contacts_token(current_user, usergroup.org_id)
+
+    def members():
+        return (
+            select(User)
+            .join(UserGroupUser, UserGroupUser.user_id == User.id)  # type: ignore
+            .where(UserGroupUser.usergroup_id == usergroup_id)
+        )
+
+    total = int(
+        (
+            await db_session.execute(
+                select(func.count()).select_from(members().subquery())
+            )
+        ).scalar_one()
+    )
+    rows = (
+        await db_session.execute(
+            members().order_by(User.id).offset((page - 1) * limit).limit(limit)
+        )
+    ).scalars().all()
+    return UserGroupContactsPage(
+        items=[
+            UserGroupContact(
+                user_uuid=user.user_uuid,
+                email=user.email or "",
+                first_name=user.first_name or "",
+            )
+            for user in rows
+        ],
+        total=total,
+        page=page,
+        limit=limit,
+    )
+
+
+def _require_contacts_token(
+    current_user: PublicUser | AnonymousUser | APITokenUser,
+    org_id: int | None = None,
+) -> APITokenUser:
+    if not isinstance(current_user, APITokenUser):
+        raise HTTPException(
+            status_code=403,
+            detail="API token with usergroups.action_read_contacts is required",
+        )
+    if org_id is not None and current_user.org_id != org_id:
+        raise HTTPException(
+            status_code=403,
+            detail="API token cannot access resources outside its organization",
+        )
+    require_token_right(current_user, "usergroups", "action_read_contacts")
+    return current_user
+
+
+async def resolve_usergroup_for_contacts(
+    request: Request,
+    db_session: AsyncSession,
+    current_user: PublicUser | AnonymousUser | APITokenUser,
+    name: str,
+) -> UserGroupResolve:
+    """Resolve one group name inside the token's org.
+
+    The contacts token does not hold `action_read`, so it cannot list groups.
+    Zero matches is 404. Two or more exact names is 409. No member data.
+    """
+    del request
+    token = _require_contacts_token(current_user)
+    cleaned = name.strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="name is required")
+    rows = (
+        await db_session.execute(
+            select(UserGroup)
+            .where(UserGroup.org_id == token.org_id)
+            .where(UserGroup.name == cleaned)
+            .order_by(UserGroup.id)
+        )
+    ).scalars().all()
+    if len(rows) == 0:
+        raise HTTPException(status_code=404, detail="UserGroup not found")
+    if len(rows) > 1:
+        raise HTTPException(status_code=409, detail="Multiple usergroups match that name")
+    return UserGroupResolve(id=rows[0].id, name=rows[0].name)
 
 
 async def read_usergroups_by_org_id(

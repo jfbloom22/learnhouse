@@ -771,6 +771,18 @@ const PermissionsEditor: React.FC<{
             </TableRow>
           ))}
           <TableRow>
+            <TableCell className="font-medium">Group contacts</TableCell>
+            <TableCell className="text-center">-</TableCell>
+            <TableCell className="text-center">
+              <Switch
+                checked={rights.usergroups?.action_read_contacts || false}
+                onCheckedChange={() => togglePermission('usergroups', 'action_read_contacts')}
+              />
+            </TableCell>
+            <TableCell className="text-center">-</TableCell>
+            <TableCell className="text-center">-</TableCell>
+          </TableRow>
+          <TableRow>
             <TableCell className="font-medium">Search</TableCell>
             <TableCell className="text-center">-</TableCell>
             <TableCell className="text-center">
@@ -809,6 +821,7 @@ const PermissionsViewer: React.FC<{ rights: APITokenRights }> = ({ rights }) => 
       <div>Media: {getPermissionSummary(rights.media)}</div>
       <div>Certs: {getPermissionSummary(rights.certifications)}</div>
       <div>Groups: {getPermissionSummary(rights.usergroups)}</div>
+      <div>Group contacts: {rights.usergroups?.action_read_contacts ? 'yes' : '-'}</div>
       <div>Payments: {getPermissionSummary(rights.payments)}</div>
       <div>Search: {rights.search?.action_read ? 'R' : '-'}</div>
     </div>

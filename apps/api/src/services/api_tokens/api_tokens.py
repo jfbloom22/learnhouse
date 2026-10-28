@@ -728,6 +728,17 @@ async def validate_rights_structure(
                         isinstance(user_right_permissions, dict)
                         and bool(user_right_permissions.get(perm_key))
                     )
+                    # Group managers may mint a contacts-only token. Their
+                    # stored role often predates action_read_contacts, and
+                    # action_read alone must not be enough to grant it.
+                    if (
+                        not user_has_perm
+                        and right_key == "usergroups"
+                        and perm_key == "action_read_contacts"
+                        and isinstance(user_right_permissions, dict)
+                        and user_right_permissions.get("action_update") is True
+                    ):
+                        user_has_perm = True
                     if not user_has_perm:
                         raise HTTPException(
                             status_code=status.HTTP_403_FORBIDDEN,

@@ -10,7 +10,15 @@ from src.db.organization_config import (
     OrganizationConfigV2Base,
 )
 from src.db.organizations import Organization, OrganizationCreate
-from src.db.roles import DashboardPermission, Permission, PermissionsWithOwn, Rights, Role, RoleTypeEnum
+from src.db.roles import (
+    DashboardPermission,
+    Permission,
+    PermissionsWithOwn,
+    Rights,
+    Role,
+    RoleTypeEnum,
+    UserGroupPermission,
+)
 from src.db.user_organizations import UserOrganization
 from src.db.users import User, UserCreate, UserRead
 from src.security.security import security_hash_password
@@ -47,11 +55,12 @@ async def install_default_elements(db_session: AsyncSession):
                 action_update=True,
                 action_delete=True,
             ),
-            usergroups=Permission(
+            usergroups=UserGroupPermission(
                 action_create=True,
                 action_read=True,
                 action_update=True,
                 action_delete=True,
+                action_read_contacts=True,
             ),
             folders=Permission(
                 action_create=True,
@@ -167,11 +176,12 @@ async def install_default_elements(db_session: AsyncSession):
                 action_update=True,
                 action_delete=False,
             ),
-            usergroups=Permission(
+            usergroups=UserGroupPermission(
                 action_create=True,
                 action_read=True,
                 action_update=True,
                 action_delete=True,
+                action_read_contacts=True,
             ),
             folders=Permission(
                 action_create=True,

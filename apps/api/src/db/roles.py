@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional, Union
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import JSON, Column, ForeignKey, Index, Integer
 from sqlmodel import Field, SQLModel
 
@@ -29,6 +29,17 @@ class PermissionsWithOwn(BaseModel):
         return getattr(self, item)
 
 
+class UserGroupPermission(Permission):
+    """Usergroup rights plus the directory grant.
+
+    ``action_read`` lists members without email. ``action_read_contacts`` is the
+    only flag that may read ``user_uuid``, ``email``, and ``first_name``. It
+    defaults off so existing roles and the entitlement token stay email-free.
+    """
+
+    action_read_contacts: bool = False
+
+
 class DashboardPermission(BaseModel):
     action_access: bool
 
@@ -39,7 +50,20 @@ class DashboardPermission(BaseModel):
 class Rights(BaseModel):
     courses: PermissionsWithOwn
     users: Permission
-    usergroups : Permission
+    usergroups: UserGroupPermission
+
+    @field_validator("usergroups", mode="before")
+    @classmethod
+    def coerce_usergroup_permission(cls, value):
+        # Call sites still pass the four-flag Permission. Keep the contacts
+        # flag only when the caller set it.
+        if isinstance(value, UserGroupPermission):
+            return value
+        if isinstance(value, Permission):
+            data = value.model_dump()
+            data["action_read_contacts"] = False
+            return data
+        return value
     folders: Permission = Permission(
         action_create=False,
         action_read=True,
